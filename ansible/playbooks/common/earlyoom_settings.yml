@@ -1,0 +1,52 @@
+---
+- name: install and config earlyoom
+  hosts: "{{ vm }}"
+  become: yes
+  become_user: root
+  
+  tasks:
+    - name: Ensure that earlyoom is installed and has latest version
+      apt:
+        name: earlyoom
+        state: latest
+    - name: Application settings
+      set_fact:
+        oom_max_mem_usage:
+          - "-m"
+          - "8"
+        oom_max_swap_usage:
+          - "-s"
+          - "100"
+        oom_report_interval:
+          - "-r"
+          - "300"
+        oom_use_dbus_for_messaging:
+          - "-n"
+        oom_prefer_procs_regex:
+          - "--prefer"
+          - "'(^|/)(1cv8|1cv8с|ragent|rphost|rmngr|ras)$'"
+        oom_avoid_procs_regex:
+          - "--avoid"
+          - "'(^|/)(sshd|xrdp|xrdp-sesman)$'"
+        cacheable: yes
+    - name: Generate earlyoom runtime arguments string
+      set_fact:
+        oom_args: "{{ ansible_facts|dict2items|selectattr('key', 'contains', 'oom_')|map(attribute='value')|flatten|join(' ')}}"
+        cacheable: yes
+    - name: Print earlyoom arguments
+      debug:
+        msg: 'EARLYOOM_ARGS="{{ oom_args }}"'
+    - name: Change earlyoom settings
+      lineinfile:
+        backup: yes
+        path: /etc/default/earlyoom
+        regexp: "^EARLYOOM_ARGS="
+        line: 'EARLYOOM_ARGS="{{ oom_args }}"'
+    - name: Restart earlyoom to apply new setings
+      systemd:
+        name: earlyoom
+        enabled: yes
+        state: restarted
+      when:
+        - ansible_facts['distribution'] == "Ubuntu"
+        - ansible_facts['distribution_major_version']|int >= 20

@@ -1,0 +1,2 @@
+﻿ import-module activedirectory
+ Get-ADUser -filter * -SearchBase "OU=Users,OU=HQ,OU=ULH,DC=domain" -Properties Samaccountname | select Samaccountname| Export-Csv -NoClobber -Encoding utf8 -Path C:\pss\list_of_users_HQ.csv 

@@ -1,0 +1,34 @@
+- name: make inventory files
+  hosts: localhost
+  become: yes
+  become_user: "{{ local_user }}"
+
+  tasks:
+    - name: Create cfg file
+      file:
+        path: "{{ inventory_path }}/ansible.cfg"
+        state: touch
+        mode: "0770"
+
+    - name: Write cfg file
+      copy:
+        dest: "{{ inventory_path }}/ansible.cfg"
+        content: |
+          [defaults]
+          inventory={{ inventory_path }}/hosts
+
+    - name: Create hosts file
+      file:
+        path: "{{ inventory_path }}/hosts"
+        state: touch
+        mode: "0770"
+
+    - name: Write hosts file
+      copy:
+        dest: "{{ inventory_path }}/hosts"
+        content: >-
+          {{ alias }} 
+          ansible_ssh_host={{ vm_id }} 
+          ansible_ssh_private_key_file="{{ key_path }}/{{ key_name }}" 
+          ansible_user="{{ ssh_user }}" 
+          ansible_ssh_common_args="-C -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"

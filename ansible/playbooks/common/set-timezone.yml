@@ -1,0 +1,10 @@
+---
+- name: set timezone
+  hosts: "{{ vm }}"
+  become: yes
+  become_user: root
+
+  tasks:
+    - name: Set timezone
+      timezone:
+        name: Europe/Moscow

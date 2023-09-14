@@ -1,0 +1,41 @@
+---
+- name: auto update off
+  hosts: "{{ vm }}"
+  become: yes
+  become_user: root
+
+  tasks:
+    - set_fact: auto_updates_file="/etc/apt/apt.conf.d/99disable-auto-updates"
+
+    - name: Check file
+      stat:
+        path: "{{ auto_updates_file }}"
+      register: stat_result
+
+    - name: 99disable-auto-updates not exists
+      block:
+        - name: create 99disable-auto-updates file
+          file:
+            path: "{{ auto_updates_file }}"
+            state: touch
+            mode: "0644"
+
+        - name: Write in 99disable-auto-updates file
+          copy:
+            dest: "{{ auto_updates_file }}"
+            content: 'APT::Periodic::Unattended-Upgrade "0";'
+
+        - name: Reconfigure unattended-upgrades
+          command: dpkg-reconfigure -f noninteractive unattended-upgrades
+
+      when: not stat_result.stat.exists
+
+    - name: Shutdown update service
+      systemd:
+        name: "{{ item }}"
+        state: stopped
+        masked: yes
+      loop:
+        - unattended-upgrades
+        - apt-daily-upgrade
+        - apt-daily

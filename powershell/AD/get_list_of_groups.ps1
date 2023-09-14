@@ -1,0 +1,2 @@
+﻿ import-module activedirectory
+ Get-ADGroup -filter * -SearchBase "OU=Groups,OU=HQ,OU=ULH,DC=domain" -Properties Samaccountname | select Samaccountname | Export-Csv -NoClobber -Encoding utf8 -Path C:\pss\list_of_groups_HQ.csv 

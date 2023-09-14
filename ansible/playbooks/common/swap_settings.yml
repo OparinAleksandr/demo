@@ -1,0 +1,54 @@
+---
+- name: set and config swap
+  hosts: "{{ vm }}"
+  become: yes
+  become_user: root
+  
+  tasks:
+    - name: Set variables for swap to create
+      set_fact:
+        swapfile:
+          size: "{{ ansible_facts['memory_mb']['real']['total'] }}" # equal to RAM size be default
+          path: /swapfile
+        free_space_bytes: "{{ ansible_facts['mounts'][0]['block_available']|int * ansible_facts['mounts'][0]['block_size']|int }}"
+        cacheable: yes
+    - name: A little bit maths...
+      set_fact:
+        max_allowed_swap_size: "{{ free_space_bytes|int / 1024 / 1024 - swapfile.size|int - 1024 }}"
+    - name: Stat swap file
+      stat:
+        path: "{{ swapfile.path }}"
+      register: swp
+    - name: Print vars for debug
+      debug:
+        msg: "{{ item }}"
+      loop:
+        - "{{ swp.stat.exists }}"
+        - "{{ max_allowed_swap_size|float }}"
+        - "{{ ansible_facts['memory_mb']['swap']['total'] }}"
+    - name: Set up swap file
+      block:
+      - name: Create file if it does not exist
+        file:
+          path: "{{ swapfile.path }}"
+          state: touch
+          owner: root
+          group: root
+          mode: '0600'
+      - name: Inflate swapfile
+        shell: dd if=/dev/zero of={{ swapfile.path }} bs=1M count={{ swapfile.size }}
+      - name: Create swap file system
+        shell: mkswap {{ swapfile.path|quote }}
+      - name: Add fstab entry
+        lineinfile:
+          state: present
+          backup: no
+          path: /etc/fstab
+          regexp: '^(.*)swap'
+          line: "{{ swapfile.path }} swap swap  defaults  0 0"
+      - name: Turn swap on
+        shell: swapon -a
+      when:
+        - not swp.stat.exists
+        - max_allowed_swap_size|float > 0
+        - ansible_facts['memory_mb']['swap']['total']|int == 0

@@ -1,0 +1,54 @@
+---
+- name: create vm
+  hosts: localhost
+  become: yc-user
+
+  tasks:
+    - set_fact:
+        common: >-
+          --folder-id "{{ folder_id | default('test') }}"
+          --zone "{{ net_zone | default('ru-central1-b') }}"
+          --platform "{{ platform | default('standard-v3') }}"
+          --ssh-key "{{ ssh_key }}"
+          --service-account-name "{{ service_account }}"
+
+    - set_fact:
+        developer: >-
+          --labels label="{{ labels | default('developer') }}"
+          --network-interface subnet-name="{{ subnet | default('vms') }}"
+          --memory "{{ memory | default('20GB') }}"
+          --cores "{{ cores | default(4) }}"
+          --core-fraction "{{ core_fraction | default(100) }}"
+          --create-boot-disk name="{{ vm_name }}-disk",size="{{ disk_size | default('300') }}",image-folder-id="{{ image_folder_id | default('standard-images') }}",image-name="{{ image_name | default('ubuntu-22-04-lts-v20220815') }}"
+          --description "Машина разработки {{ vm_name }}"
+          --create-boot-disk name="{{ vm_name }}-disk",size="{{ disk_size | default('300') }}",image-folder-id="{{ image_folder_id | default('standard-images') }}",image-name="{{ image_name | default('ubuntu-22-04-lts-v20220815') }}",auto-delete="{{ auto_delete | default('false') }}"
+        when: vm_type == 'developer'
+
+    - set_fact:
+        service: >-
+          --labels label="{{ labels | default('service') }}"
+          --network-interface subnet-name="{{ subnet | default('vms') }}"
+          --memory "{{ memory | default('2GB') }}"
+          --cores "{{ cores | default(2) }}"
+          --core-fraction "{{ core_fraction | default(20) }}"
+          --create-boot-disk name="{{ vm_name }}-disk",size="{{ disk_size | default('20') }}",image-folder-id="{{ image_folder_id | default('standard-images') }}",image-name="{{ image_name | default('ubuntu-22-04-lts-v20220815') }}",auto-delete="{{ auto_delete | default('false') }}"
+          --description "Сервисная ВМ {{ vm_name }}"
+        when: vm_type == 'service'
+
+    - name: Create developer vm
+      shell: >-
+        /home/yc-user/yandex-cloud/bin/yc
+        compute instance create --name "{{ vm_name }}"
+        --hostname "{{ vm_name }}"
+        {{ common }}
+        {{ developer }}
+      when: vm_type == 'developer'
+
+    - name: Create service vm
+      shell: >-
+        /home/yc-user/yandex-cloud/bin/yc
+        compute instance create --name "{{ vm_name }}"
+        --hostname "{{ vm_name }}"
+        {{ common }}
+        {{ service }}
+      when: vm_type == 'service'
