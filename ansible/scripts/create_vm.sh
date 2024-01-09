@@ -30,6 +30,8 @@ fi
 
 # default vars
 vm_type='developer'
+host_alias='yandex_vm'
+local_user='yandex-user'
 
 set -e
 export ANSIBLE_HOST_KEY_CHECKING=false
@@ -54,15 +56,15 @@ if [[ -z $vm_name ]]; then
 else
   chmod -R 770 ../../playbooks
   cd ../../playbooks
-  ansible-playbook ./create_vm/yandex/create_vm.yml -e "{ vm_name: $vm_name, vm_type: developer }" -vvv
-  ansible-playbook ./common/mk_inventory_files.yml -e "{ local_user: yc-user, key_path: '/home/yc-user/.ssh', key_name: 'id_rsa', inventory_path: $(pwd), alias: yandex_vm, vm_id: $vm_name, ssh_user: yc-user }" -vv
-  ansible-playbook ./common/wait.yml -e "{ vm: yandex_vm }" -vv
-  ansible-playbook ./common/upd.yml -e "{ vm: yandex_vm }" -vv
-  ansible-playbook ./common/set-timezone.yml -e "{ vm: yandex_vm }" -vv
-  ansible-playbook ./common/autoupdate_off.yml -e "{vm: yandex_vm }" -vv
-  ansible-playbook ./common/earlyoom_settings.yml -e "{ vm: yandex_vm }" -vv
-  ansible-playbook ./common/swap_settings.yml -e "{ vm: yandex_vm }" -vv
-  ansible-playbook ./common/reboot.yml -e "{ vm: yandex_vm }" -vv
+  ansible-playbook ./create_vm/yandex/create_vm.yml -e "{ vm_name: $vm_name, vm_type: $vm_type }" -vvv
+  ansible-playbook ./common/mk_inventory_files.yml -e "{ local_user: $local_user, key_path: '/home/$local_user/.ssh', key_name: 'id_rsa', inventory_path: $(pwd), alias: $host_alias, vm_id: $vm_name, ssh_user: $local_user }" -vv
+  ansible-playbook ./common/wait.yml -e "{ host_alias: $host_alias }" -vv
+  ansible-playbook ./common/upd.yml -e "{ host_alias: $host_alias }" -vv
+  ansible-playbook ./common/set-timezone.yml -e "{ host_alias: $host_alias }" -vv
+  ansible-playbook ./common/autoupdate_off.yml -e "{ host_alias: $host_alias }" -vv
+  ansible-playbook ./common/earlyoom_settings.yml -e "{ host_alias: $host_alias }" -vv
+  ansible-playbook ./common/swap_settings.yml -e "{ host_alias: $host_alias }" -vv
+  ansible-playbook ./common/reboot.yml -e "{ host_alias: $host_alias }" -vv
 fi 
 
 

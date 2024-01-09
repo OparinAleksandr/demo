@@ -1,6 +1,6 @@
 ---
 - name: install and config earlyoom
-  hosts: "{{ vm }}"
+  hosts: "{{ host_alias }}"
   become: yes
   become_user: root
   

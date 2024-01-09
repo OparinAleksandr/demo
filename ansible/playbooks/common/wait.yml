@@ -1,6 +1,6 @@
 ---
 - name: wait vm
-  hosts: "{{ vm }}"
+  hosts: "{{ host_alias }}"
   become: yes
   become_user: root
   gather_facts: no

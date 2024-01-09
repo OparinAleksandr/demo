@@ -1,0 +1,62 @@
+stages:
+  - delete_runners
+  - reboot_runners
+
+delete_runners:
+  stage: delete_runners
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $REBOOT == null'
+      when: always
+    - if: '$CI_PIPELINE_SOURCE == "push" && $REBOOT == null'
+      when: manual
+    - if: '$CI_PIPELINE_SOURCE == "web" && $REBOOT == null'
+      when: manual
+  script:
+    - |
+      apt update
+      apt install jq curl -y
+
+      DEL_RUNNERS_TAGS=("build1c-gitlab") # Теги раннеров, которые нужно удалять
+      GITLAB_API_URL=https://biterp.gitlab.yandexcloud.net/api/v4/runners
+
+      function delete_runner() {
+        local runners_id=$@
+        local two_hours_ago=$(date -u -d '-2 hours' "+%Y-%m-%dT%H:%M:%S.%3NZ")
+        for del_tag in "${DEL_RUNNERS_TAGS[@]}"; do
+          for id in $runners_id; do
+            response=$(curl --silent --header "PRIVATE-TOKEN: $ACCESS_TOKEN" "${GITLAB_API_URL}/$id" | jq -r '.tag_list[], .contacted_at')
+            tags=$(echo "$response" | awk 'NR==1')
+            contacted_at=$(echo "$response" | awk 'NR==2')
+            if [[ $contacted_at < $two_hours_ago ]] || [[ $contacted_at == "Never" ]]; then
+              time_to_del=True
+            fi
+            for tag in $tags; do
+              if [[ "$tag" == ${del_tag}* ]] && [[ $time_to_del == True ]]; then
+                echo "Delete runner ID: $id TAG: $tag"
+                curl --request DELETE --header "PRIVATE-TOKEN: $ACCESS_TOKEN" "${GITLAB_API_URL}/$id"
+              fi
+            done
+          done
+        done
+      }
+
+      delete_runner $(curl --silent --header "PRIVATE-TOKEN: $ACCESS_TOKEN" "${GITLAB_API_URL}/all?status=offline" | jq -r '.[].id')
+      delete_runner $(curl --silent --header "PRIVATE-TOKEN: $ACCESS_TOKEN" "${GITLAB_API_URL}/all?status=never_contacted" | jq -r '.[].id')
+
+  image: ubuntu
+  tags:
+    - docker
+
+reboot:
+  stage: reboot_runners
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $REBOOT != null'
+      when: always
+    - if: '$CI_PIPELINE_SOURCE == "push" && $REBOOT != null'
+      when: manual
+    - if: '$CI_PIPELINE_SOURCE == "web" && $REBOOT != null'
+      when: manual
+  script:
+    - sudo systemctl reboot
+  tags:
+    - "$REBOOT"

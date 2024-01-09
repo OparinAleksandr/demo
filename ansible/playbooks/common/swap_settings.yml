@@ -1,6 +1,6 @@
 ---
 - name: set and config swap
-  hosts: "{{ vm }}"
+  hosts: "{{ host_alias }}"
   become: yes
   become_user: root
   

@@ -1,28 +1,24 @@
-# отправляет метрики в Яндекс-мониторинг
-# по нагрузке аппаратных ресурсов
+#!/usr/bin/env python3
 
-import os
 import copy
-import time
 import json
 import psutil
-import logging
-import requests
 import platform
 import subprocess
-from logging.handlers import RotatingFileHandler
+import sqlite3 as sl
+from modules.config import config
+from modules.log_config import logging_config
+from modules.monitoring import send_monitoring_metrics
 
-from rd_config import wr_log
-from rd_config import rd_server_name
-from rd_config import rd_project_name
+logger = logging_config(__file__, main_module=True)
 
-from get_iam import get_iam_token
-
-
-# формирует список разделов и путей
-# для дисков linux, фильтрует разделы
-# boot, swap и размером меньше 1ГБ
 def get_disk_partitions():
+    """
+    формирует список разделов и путей
+    для дисков linux, фильтрует разделы
+    boot, swap и размером меньше 1ГБ
+    """
+
     disk_partitions = {}
     try:
         lsblk = json.loads(
@@ -31,7 +27,7 @@ def get_disk_partitions():
             )
         )
     except Exception as exc:
-        logging.error(f"Error get lsblk json: {exc}")
+        logger.error(f"Error get lsblk json: {exc}")
 
     def not_in_black_lst(blockdevice):
         in_list = 0
@@ -72,13 +68,17 @@ def get_disk_partitions():
     return disk_partitions
 
 
-# формирует массив метрик
-# с доступным ресурсом ЦПУ в %
-# с доступным объёмом оперативной памяти в %
-# и доступным свободным местом на дисках в %
-def form_metrics():
-    srv_name = rd_server_name()
-    prj_name = rd_project_name()
+def metrics():
+    """
+    формирует массив метрик
+    с доступным ресурсом ЦПУ в %
+    с доступным объёмом оперативной памяти в %
+    и доступным свободным местом на дисках в %
+    """
+
+    conf = config()["client"]
+    srv_name = conf["server_name"]
+    prj_name = conf["project_name"]
     metrics_array = []
     metrics_data = {
         "name": "hardware_server_monitoring",
@@ -93,15 +93,13 @@ def form_metrics():
     cpu_metrics["labels"]["cpu"] = "cpu_available_%"
     cpu_metrics["value"] = cpu_available
     metrics_array.append(cpu_metrics)
-    log_data = f"CPU metrics {cpu_metrics}"
-    wr_log(log_data)
+    logger.debug(f"CPU metrics {cpu_metrics}")
     ram_available = round(100 - psutil.virtual_memory().percent, 0)
     ram_metrics = copy.deepcopy(metrics_data)
     ram_metrics["labels"]["ram"] = "ram_available_%"
     ram_metrics["value"] = ram_available
     metrics_array.append(ram_metrics)
-    log_data = f"RAM metrics {ram_metrics}"
-    wr_log(log_data)
+    logger.debug(f"RAM metrics {ram_metrics}")
     if platform.system() == "Windows":
         for sdiskpart in psutil.disk_partitions():
             try:
@@ -116,11 +114,9 @@ def form_metrics():
                     hdd_metrics["labels"]["drive"] = drive
                     hdd_metrics["value"] = disk_available
                     metrics_array.append(hdd_metrics)
-                    log_data = f"HDD metrics {hdd_metrics}"
-                    wr_log(log_data)
+                    logger.debug(f"HDD metrics {hdd_metrics}")
             except OSError as error:
-                log_data = f"Error to get space on drive {drive} {error}"
-                wr_log(log_data)
+                logger.debug(f"Error to get space on drive {drive} {error}")
     else:
         for partition, name in get_disk_partitions().items():
             try:
@@ -130,77 +126,15 @@ def form_metrics():
                 hdd_metrics["labels"]["drive"] = name
                 hdd_metrics["value"] = disk_available
                 metrics_array.append(hdd_metrics)
-                log_data = f"HDD metrics {hdd_metrics}"
-                wr_log(log_data)
+                logger.debug(f"HDD metrics {hdd_metrics}")
             except OSError as error:
-                log_data = f"Error to get space on disk {error}"
-                wr_log(log_data)
+                logger.debug(f"Error to get space on disk {error}")
     hardware_metrics = {"metrics": metrics_array}
     return hardware_metrics
 
 
-# формирует url для отправки
-# и отправляет массив метрик в мониторинг
-def send_metrics(hardware_metrics):
-    send_error = 0
-    iam_token = os.environ.get("IAM_TOKEN")
-    folderId = os.environ.get("FOLDER_ID")
-    if not iam_token and not folderId:
-        get_iam_token()
-        iam_token = os.environ.get("IAM_TOKEN")
-        folderId = os.environ.get("FOLDER_ID")
-    yc_url = (
-        "https://monitoring.api.cloud.yandex.net/monitoring/v2/data/write?service=custom&folderId="
-        + folderId
-    )
-    headers = {
-        "Content-type": "application/json",
-        "Accept": "*/*",
-        "Authorization": "Bearer " + iam_token,
-    }
-    try:
-        resp = requests.post(yc_url, data=json.dumps(hardware_metrics), headers=headers)
-        if resp.status_code == 200:
-            log_data = f"Monitoring for hardware is successfully send"
-            wr_log(log_data)
-        elif resp.status_code > 400:
-            get_iam_token()
-            log_data = f"Get iam token and folderId"
-            wr_log(log_data)
-    except Exception as exc:
-        log_data = f"Error occurred when metrics send: {exc}"
-        wr_log(log_data)
-        send_error = 1
-    return send_error
-
-
-# формирует и отправляет метрики
-# используя 10 попыток
 def main():
-    attempts = 10
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    log_dir_path = os.path.join(current_dir, "send_hw_log")
-    if not os.path.exists(log_dir_path):
-        os.makedirs(log_dir_path)
-    log_file_path = os.path.join(log_dir_path, "send_hw_mon.log")
-    logging.basicConfig(
-        handlers=[
-            RotatingFileHandler(log_file_path, maxBytes=300000, backupCount=5),
-            logging.StreamHandler(),
-        ],
-        level=logging.DEBUG,
-        format="[%(asctime)s] %(message)s",
-        datefmt="%Y-%m-%dT%H:%M:%S",
-    )
-    hardware_metrics = form_metrics()
-    for i in range(attempts):
-        if send_metrics(hardware_metrics):
-            log_data = f"Attempt num: {i}"
-            wr_log(log_data)
-            time.sleep(20)
-            continue
-        else:
-            break
+    send_monitoring_metrics(__file__, metrics())
 
 
 if __name__ == "__main__":
